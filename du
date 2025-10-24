@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>粒子散开爱心特效</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #000;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Microsoft YaHei', sans-serif;
+        }
+        
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        
+        .center-text {
+            position: relative;
+            z-index: 2;
+            text-align: center;
+            color: white;
+            font-size: 42px;
+            font-weight: bold;
+            text-shadow: 0 0 15px #ff3399, 0 0 25px #ff3399, 0 0 35px #ff3399;
+            animation: pulse 2s infinite;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.9; }
+            50% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 0.9; }
+        }
+        
+        .floating-text {
+            position: absolute;
+            bottom: -50px;
+            color: #ff99cc;
+            font-size: 20px;
+            white-space: nowrap;
+            z-index: 3;
+            opacity: 0;
+            text-shadow: 0 0 8px rgba(255, 105, 180, 0.8);
+            animation: floatUp 10s linear infinite;
+            font-weight: bold;
+        }
+        
+        @keyframes floatUp {
+            0% {
+                transform: translateY(0) rotate(0deg);
+                opacity: 0.8;
+            }
+            50% {
+                opacity: 0.5;
+            }
+            100% {
+                transform: translateY(-100vh) rotate(360deg);
+                opacity: 0;
+            }
+        }
+        
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            color: #aaa;
+            font-size: 14px;
+            z-index: 4;
+        }
+        
+        .controls {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            z-index: 5;
+        }
+        
+        .control-btn {
+            background: rgba(255, 105, 180, 0.3);
+            color: white;
+            border: 1px solid #ff69b4;
+            padding: 8px 15px;
+            margin: 0 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .control-btn:hover {
+            background: rgba(255, 105, 180, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="heartCanvas"></canvas>
+    
+    <div class="controls">
+        <button class="control-btn" id="resetBtn">重置粒子</button>
+        <button class="control-btn" id="toggleBtn">暂停/继续</button>
+    </div>
+    
+    <div class="center-text">永恒的爱</div>
+    
+    <div class="instructions">点击屏幕添加更多漂浮文字</div>
+    
+    <script>
+        const canvas = document.getElementById('heartCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // 设置画布大小为窗口大小
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        const particles = [];
+        // 增加粒子数量使爱心更明显
+        const numberOfParticles = 500;
+        let animationId = null;
+        let isAnimating = true;
+        
+        // 爱心形状参数方程 [1,3](@ref)
+        const heartShape = (t) => {
+            const x = 16 * Math.pow(Math.sin(t), 3);
+            const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+            return { x, y };
+        };
+        
+        class Particle {
+            constructor() {
+                this.reset();
+                // 初始位置设在爱心轮廓上
+                this.t = Math.random() * 2 * Math.PI;
+                const coords = heartShape(this.t);
+                this.x = coords.x * 18 + canvas.width / 2;
+                this.y = -coords.y * 18 + canvas.height / 2;
+                
+                // 设置初始速度为0，将在开始散开时赋予速度
+                this.vx = 0;
+                this.vy = 0;
+                this.isActive = false; // 粒子是否开始散开
+                this.delay = Math.random() * 120; // 随机延迟开始散开
+            }
+            
+            reset() {
+                this.t = Math.random() * 2 * Math.PI;
+                const coords = heartShape(this.t);
+                this.x = coords.x * 18 + canvas.width / 2;
+                this.y = -coords.y * 18 + canvas.height / 2;
+                
+                // 随机速度方向 - 向外散开
+                const angle = Math.atan2(this.y - canvas.height/2, this.x - canvas.width/2);
+                const speed = Math.random() * 2 + 1;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                
+                this.size = Math.random() * 4 + 2;
+                this.opacity = Math.random() * 0.6 + 0.4;
+                
+                const colors = [
+                    `rgba(255, 50, 150, ${this.opacity})`,
+                    `rgba(255, 100, 180, ${this.opacity})`,
+                    `rgba(255, 150, 200, ${this.opacity})`,
+                    `rgba(255, 200, 220, ${this.opacity})`
+                ];
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                
+                this.isActive = false;
+                this.delay = Math.random() * 120;
+                this.life = 1;
+            }
+            
+            update() {
+                // 延迟开始散开，创建波浪效果
+                if (this.delay > 0) {
+                    this.delay--;
+                    return;
+                }
+                
+                this.isActive = true;
+                
+                // 更新粒子位置 - 向外散开
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // 逐渐减小生命值
+                this.life -= 0.002;
+                
+                // 如果粒子离开屏幕或生命结束，重置粒子
+                if (this.life <= 0 || 
+                    this.x < -50 || this.x > canvas.width + 50 || 
+                    this.y < -50 || this.y > canvas.height + 50) {
+                    this.reset();
+                }
+            }
+            
+            draw() {
+                if (!this.isActive) return;
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                
+                // 添加粒子发光效果
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 15;
+                
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = this.opacity * this.life;
+                ctx.fill();
+                
+                // 重置阴影效果和透明度
+                ctx.shadowBlur = 0;
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        // 初始化粒子
+        function initParticles() {
+            for (let i = 0; i < numberOfParticles; i++) {
+                particles.push(new Particle());
+            }
+        }
+        
+        // 动画循环
+        function animate() {
+            // 使用半透明黑色覆盖而不是完全清除，创建轨迹效果
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制爱心轮廓（可选）
+            drawHeartOutline();
+            
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+            
+            if (isAnimating) {
+                animationId = requestAnimationFrame(animate);
+            }
+        }
+        
+        // 绘制爱心轮廓
+        function drawHeartOutline() {
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 100, 180, 0.3)';
+            ctx.lineWidth = 2;
+            
+            for (let t = 0; t < 2 * Math.PI; t += 0.01) {
+                const coords = heartShape(t);
+                const x = coords.x * 18 + canvas.width / 2;
+                const y = -coords.y * 18 + canvas.height / 2;
+                
+                if (t === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            
+            ctx.closePath();
+            ctx.stroke();
+        }
+        
+        // 创建漂浮文字
+        function createFloatingText() {
+            const texts = ["永远爱你", "一生一世", "白头偕老", "永结同心", "心心相印", 
+                         "天长地久", "幸福美满", "相亲相爱", "海枯石烂", "至死不渝"];
+            const container = document.body;
+            
+            // 每次创建3个文字
+            for (let i = 0; i < 3; i++) {
+                setTimeout(() => {
+                    const textElement = document.createElement('div');
+                    textElement.className = 'floating-text';
+                    textElement.textContent = texts[Math.floor(Math.random() * texts.length)];
+                    
+                    // 随机水平位置
+                    const leftPos = 10 + Math.random() * 80;
+                    textElement.style.left = `${leftPos}vw`;
+                    
+                    // 随机动画延迟和持续时间
+                    const delay = Math.random() * 5;
+                    const duration = 10 + Math.random() * 5;
+                    textElement.style.animation = `floatUp ${duration}s linear ${delay}s infinite`;
+                    
+                    // 随机字体大小
+                    const fontSize = 16 + Math.random() * 10;
+                    textElement.style.fontSize = `${fontSize}px`;
+                    
+                    container.appendChild(textElement);
+                    
+                    // 动画结束后移除元素
+                    setTimeout(() => {
+                        if (textElement.parentNode) {
+                            textElement.parentNode.removeChild(textElement);
+                        }
+                    }, (duration + delay) * 1000);
+                    
+                }, i * 800); // 每隔0.8秒创建一个新文字
+            }
+        }
+        
+        // 窗口大小改变时调整画布
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+        
+        // 点击页面添加更多漂浮文字
+        canvas.addEventListener('click', (e) => {
+            const texts = ["我爱你", "我想你", "在一起", "永相随"];
+            const textElement = document.createElement('div');
+            textElement.className = 'floating-text';
+            textElement.textContent = texts[Math.floor(Math.random() * texts.length)];
+            textElement.style.left = `${e.clientX}px`;
+            
+            const duration = 8 + Math.random() * 4;
+            textElement.style.animation = `floatUp ${duration}s linear 0s infinite`;
+            
+            // 随机字体大小
+            const fontSize = 16 + Math.random() * 10;
+            textElement.style.fontSize = `${fontSize}px`;
+            
+            document.body.appendChild(textElement);
+            
+            setTimeout(() => {
+                if (textElement.parentNode) {
+                    textElement.parentNode.removeChild(textElement);
+                }
+            }, duration * 1000);
+        });
+        
+        // 控制按钮事件
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            particles.forEach(particle => particle.reset());
+        });
+        
+        document.getElementById('toggleBtn').addEventListener('click', () => {
+            isAnimating = !isAnimating;
+            if (isAnimating) {
+                animate();
+            } else {
+                cancelAnimationFrame(animationId);
+            }
+        });
+        
+        // 启动
+        initParticles();
+        animate();
+        
+        // 初始创建漂浮文字，然后每隔一段时间再次创建
+        createFloatingText();
+        setInterval(createFloatingText, 8000);
+    </script>
+</body>
+</html>
